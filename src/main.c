@@ -199,6 +199,8 @@ static void dump_cpu(void) {
             "orr r1, r1, $0x80\n\t"
             "eor r1, r1, $0x80\n\t" // enable interrupt
             "stmia r0!, {r1}\n\t"   // cpsr
+            "mrs r1, spsr\n\t"
+            "stmia r0!, {r1}\n\t"   // spsr
             GET_BANKED_SPSR_SP_LR(_SYS) // _USR
             GET_BANKED_SPSR_SP_LR(_SVC)
             GET_BANKED_SPSR_SP_LR(_ABT)

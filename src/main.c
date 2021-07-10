@@ -135,6 +135,92 @@ int init_module (void)
     return init();
 }
 
+#ifdef CONFIG_ARM
+static void dump_cpu(void) {
+    unsigned long flags;
+    memset(vpage, 0, PAGE_SIZE);
+    DBG("Dumping CPU");
+    preempt_disable();
+    local_irq_save(flags);
+#define _USR 0x10
+#define _FIQ 0x11
+#define _IRQ 0x12
+#define _SVC 0x13
+#define _MON 0x16
+#define _ABT 0x17
+#define _HYP 0x1a
+#define _UND 0x1b
+#define _SYS 0x1f
+
+#define MODE(m) #m
+#define M(m) MODE(m)
+#define GET_BANKED_SPSR_SP_LR(mode)  \
+    "mrs r4, cpsr\n\t"          \
+    "mrs r1, cpsr\n\t"          \
+    "orr r1, r1, $0x1f\n\t"     \
+    "eor r1, r1, $0x1f\n\t"     \
+    "eor r1, r1, $"M(mode)"\n\t"     \
+    "msr cpsr_c, r1\n\t"          \
+    "mrs r1, spsr\n\t"       \
+    "mov r2, r13\n\t"       \
+    "mov r3, r14\n\t"       \
+    "msr cpsr_c, r4\n\t"          \
+    "stmia r0!, {r1-r3}\n\t"
+
+    __asm__ __volatile__ (
+            "stmdb sp, {r0-r4}\n\t"
+            "mov r1, r0\n\t"
+            "ldr r0, %0\n\t"
+            "stmia r0!, {r1}\n\t"   // r0
+            "ldmdb sp, {r0-r4}\n\t"
+            "ldr r0, %0\n\t"
+            "stmia r0!, {r1-r14}\n\t" // r1-r14
+            "adr r1, 1f\n\t"
+            "add r1, r1, #4\n\t"
+            "stmia r0!, {r1}\n\t"   // new pc
+            "mrs r1, cpsr\n\t"
+            "and r1, $0x3c0\n\t"
+            "stmia r0!, {r1}\n\t"   // daif
+            "mrc p15, 0, r1, c1, c1, 0\n\t"
+            "stmia r0!, {r1}\n\t"   // cp15.scr
+            //"mrc p15, 4, r1, c1, c1, 0\n\t"
+            //"stmia r0!, {r1}\n\t"   // cp15.hcr
+            "mrc p15, 0, r1, c3, c0, 0\n\t"
+            "stmia r0!, {r1}\n\t"   // cp15.dacr
+            "mrc p15, 0, r1, c2, c0, 0\n\t"
+            "stmia r0!, {r1}\n\t"   // cp15.ttbr0
+            "mrc p15, 0, r1, c2, c0, 1\n\t"
+            "stmia r0!, {r1}\n\t"   // cp15.ttbr1
+            "mrc p15, 0, r1, c1, c0, 0\n\t"
+            "stmia r0!, {r1}\n\t"   // cp15.sctlr
+            "mrc p15, 0, r1, c12, c0, 0\n\t"
+            "stmia r0!, {r1}\n\t"   // cp15.vbar
+            "mrs r1, cpsr\n\t"
+            "orr r1, r1, $0x80\n\t"
+            "eor r1, r1, $0x80\n\t" // enable interrupt
+            "stmia r0!, {r1}\n\t"   // cpsr
+            GET_BANKED_SPSR_SP_LR(_SYS) // _USR
+            GET_BANKED_SPSR_SP_LR(_SVC)
+            GET_BANKED_SPSR_SP_LR(_ABT)
+            GET_BANKED_SPSR_SP_LR(_UND)
+            GET_BANKED_SPSR_SP_LR(_IRQ)
+            GET_BANKED_SPSR_SP_LR(_FIQ)
+            GET_BANKED_SPSR_SP_LR(_HYP)
+            GET_BANKED_SPSR_SP_LR(_MON)
+            "ldmdb sp, {r0-r4}\n\t"
+            //"hlt\n\t"
+            "1:"
+            ::"m" (vpage)
+            :
+            );
+    local_irq_restore(flags);
+    preempt_enable();
+
+    DBG("Write CPU dump");
+    write_vaddr(vpage, PAGE_SIZE);
+}
+#endif
+
 static int init() {
     struct resource *p;
     int err = 0;
@@ -157,7 +243,8 @@ static int init() {
         no_overlap = 1;
     }
 
-    vpage = (void *) __get_free_page(GFP_NOIO);
+    //vpage = (void *) __get_free_page(GFP_NOIO);
+    vpage = (void *) __get_free_page(GFP_NOWAIT);
 
 #ifdef LIME_SUPPORTS_DEFLATE
     if (compress) {
@@ -192,6 +279,9 @@ static int init() {
     write_flush();
 
     DBG("Memory Dump Complete...");
+
+    // Dump CPU
+    dump_cpu();
 
     cleanup();
 

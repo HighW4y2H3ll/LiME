@@ -174,6 +174,7 @@ static void dump_cpu(void) {
             "stmia r0!, {r1}\n\t"   // r0
             "ldmdb sp, {r0-r4}\n\t"
             "ldr r0, %0\n\t"
+            "add r0, #4\n\t"
             "stmia r0!, {r1-r14}\n\t" // r1-r14
             "adr r1, 1f\n\t"
             "add r1, r1, #4\n\t"
